@@ -14,16 +14,26 @@ public class SockJsXhrSessionHandler extends AbstractWebSocketHandler {
 	private String subscribeHeaders;
 	private long connectionTime;
 	private long responseBufferTime;
+	private String messagesToSend;
 	private ResponseMessage responseMessage;
 	private boolean subscribed = false;
 	private long messageCounter = 1;
-	
+
 	public SockJsXhrSessionHandler(String connectionHeader, String subscribeHeaders, long connectionTime, long responseBufferTime, ResponseMessage responseMessage) {
 		this.connectionHeader = connectionHeader;
 		this.subscribeHeaders = subscribeHeaders;
 		this.connectionTime = connectionTime;
 		this.responseBufferTime = responseBufferTime;
-		this.responseMessage = responseMessage;		
+		this.responseMessage = responseMessage;
+	}
+
+	public SockJsXhrSessionHandler(String connectionHeader, String subscribeHeaders, String messagesToSend, long connectionTime, long responseBufferTime, ResponseMessage responseMessage) {
+		this.connectionHeader = connectionHeader;
+		this.subscribeHeaders = subscribeHeaders;
+		this.messagesToSend = messagesToSend;
+		this.connectionTime = connectionTime;
+		this.responseBufferTime = responseBufferTime;
+		this.responseMessage = responseMessage;
 	}
 	
 	@Override
@@ -50,7 +60,7 @@ public class SockJsXhrSessionHandler extends AbstractWebSocketHandler {
 	  	final Matcher m = Pattern.compile("CONNECTED|MESSAGE").matcher(messagePayload);
 	  	if (m.find()) {
 	  		switch (m.group()) {
-	      		case "CONNECTED": 
+	      		case "CONNECTED":
 	      			this.responseMessage.addMessage(" - Connection established"); 
 	      			this.responseMessage.addMessage(" - Leaving streaming connection open"); 
 	      					      				      		
@@ -62,6 +72,19 @@ public class SockJsXhrSessionHandler extends AbstractWebSocketHandler {
 		    		TextMessage subscribeMessage = textMessageBuilder.build();
 		      		
 		      		session.sendMessage(subscribeMessage);
+
+
+		      		if (messagesToSend != null && !messagesToSend.isEmpty()) {
+						SockJsStompTextMessageBuilder customMessageBuilder = SockJsStompTextMessageBuilder.create(StompCommand.SEND);
+
+						String[] splitMessageHeaders = messagesToSend.split("\n");
+
+						customMessageBuilder.headers("destination:" + splitMessageHeaders[0]);
+
+						customMessageBuilder.body(splitMessageHeaders[1]);
+
+						session.sendMessage(customMessageBuilder.build());
+					}
 		      		break;
 	      		case "MESSAGE":
 	      			if (!this.subscribed) {
@@ -81,7 +104,7 @@ public class SockJsXhrSessionHandler extends AbstractWebSocketHandler {
 	      	 			sb.append("\\n" + splitMessageHeaders[i]);
 	      	 		}
 	      			
-	      			sb.append("\\n\\n" + messageContent.toString() + "\\u0000\\n\"];");
+	      			sb.append("\\n\\n" + messageContent + "\\u0000\\n\"];");
 	      							
 	      			this.responseMessage.addMessage(sb.toString());
 	      			this.responseMessage.setMessageCounter(this.messageCounter);
@@ -112,9 +135,16 @@ public class SockJsXhrSessionHandler extends AbstractWebSocketHandler {
 	}
 	
 	private String getMessageContent(String messagePayload) {
-		final Matcher matcher = Pattern.compile(".*(\\{\".*\"\\}).*").matcher(messagePayload);
-		matcher.find();
-		String content = matcher.group(1);
+		final Matcher matcher = Pattern.compile(".*(\\{\".*(\")?\\}).*").matcher(messagePayload);
+		String content;
+		if (matcher.find()) {
+			content = matcher.group(1);
+		} else {
+			System.out.println("unmatched messagePayload ------------------------------------------------------------");
+			System.out.println(messagePayload);
+			System.out.println("unmatched messagePayload end --------------------------------------------------------");
+			content = messagePayload;
+		}
 		
 		return content.trim();
 	}
